@@ -16,6 +16,8 @@ import spock.lang.Issue
 import spock.lang.PendingFeature
 import spock.lang.Specification
 
+import java.lang.reflect.Modifier
+
 import static io.micronaut.annotation.processing.test.KotlinCompiler.*
 
 class AroundCompileSpec extends Specification {
@@ -105,6 +107,77 @@ class TestInterceptor: Interceptor<Any, Any> {
         then:"the interceptor was invoked"
         instance instanceof Intercepted
         interceptor.invoked
+        instance.class.modifiers
+
+        cleanup:
+        context.close()
+    }
+
+
+    void 'test visibility modifiers'() {
+        given:
+        ApplicationContext context = buildContext('''
+package visibility
+
+import io.micronaut.aop.Around
+import io.micronaut.aop.InterceptorBean
+import io.micronaut.aop.Interceptor
+import io.micronaut.aop.InvocationContext
+import jakarta.inject.Singleton
+
+@Singleton
+open class WithoutAround {
+    val name : String = "test"
+
+    open fun test() {
+
+    }
+
+}
+
+@Singleton
+open class WithAround {
+    val name : String = "test"
+
+    @TestAnn2
+    open fun test() {
+
+    }
+
+}
+
+@Retention
+@Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+@Around
+annotation class TestAnn
+
+@Retention
+@Target(AnnotationTarget.FUNCTION)
+@TestAnn
+annotation class TestAnn2
+
+@InterceptorBean(TestAnn::class)
+class TestInterceptor: Interceptor<Any, Any> {
+    var invoked = false
+
+    override fun intercept(context: InvocationContext<Any, Any>): Any? {
+        invoked = true
+        return context.proceed()
+    }
+}
+
+''')
+        def instance1 = getBean(context, 'visibility.WithoutAround')
+        def instance2 = getBean(context, 'visibility.WithAround')
+//        def interceptor = getBean(context, 'annbinding2.TestInterceptor')
+
+        when:
+        instance1.test()
+        instance2.test()
+
+        then:"both classes are public"
+        Modifier.isPublic(instance1.class.modifiers)
+        Modifier.isPublic(instance2.class.modifiers)
 
         cleanup:
         context.close()
